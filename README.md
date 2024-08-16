@@ -21,12 +21,7 @@ BMST has been rigorously tested and validated across four public datasets to ens
 
 To install BMST, follow these simple steps:
 
-1. Clone the repository:
-2. git clone https://github.com/yourusername/bmst.git
-3. 2. Navigate to the BMST directory:
-cd bmst
-
-3. Install the required dependencies using pip:
+Install the required dependencies using pip:
 pip install -r requirements.txt
 
 
