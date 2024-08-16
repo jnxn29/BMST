@@ -1,21 +1,25 @@
+""" helper function
 
+author baiyu
+"""
 import os
 import sys
 import re
 import datetime
 
-
 import numpy as np
 from PIL import Image
 import torch
-
+# from torch.optim.lr_scheduler import _LRScheduler
 import torchvision
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
+from torchvision.datasets import ImageFolder
 
 
 def get_network(args):
-
+    """ return given network
+    """
     print(args.net)
 
     if args.net == 'vgg16':
@@ -30,7 +34,7 @@ def get_network(args):
     elif args.net == 'vgg19':
         from models.vgg import vgg19_bn
         net = vgg19_bn()
-
+    # c2mixt
     elif args.net == 'c2mixt_resnet18':
         from models.c2mixt_resnet import c2mixt_resnet18
         net = c2mixt_resnet18()
@@ -168,7 +172,7 @@ def get_network(args):
         net = stochastic_depth_resnet101()
 
 
-
+    # c4mixt
     elif args.net == 'c4mixt_resnet18':
         from models.c4mixt_resnet import c4mixt_resnet18
         net = c4mixt_resnet18()
@@ -186,7 +190,7 @@ def get_network(args):
         net = c4mixt_resnet152()
 
 
-
+        # c2c4mixt
     elif args.net == 'c2c4mixt_resnet18':
         from models.c2c4mixt_resnet import c2c4mixt_resnet18
         net = c2c4mixt_resnet18()
@@ -211,7 +215,7 @@ def get_network(args):
     elif args.net == 'c3mixt_inceptionv3':
         from models.c3mixt_inceptionv3 import c3mixt_inceptionv3
         net = c3mixt_inceptionv3()
-
+    #c3mixt_resnet
     elif args.net == 'c3mixt_resnet18':
         from models.c3mixt_resnet import c3mixt_resnet18
         net = c3mixt_resnet18()
@@ -228,64 +232,73 @@ def get_network(args):
         from models.c3mixt_resnet import c3mixt_resnet152
         net = c3mixt_resnet152()
 
-    elif args.net == 'bmst_c3_resnet18':
-        from models.bmst_c3_resnet import bmst_c3_resnet18
-        net = bmst_c3_resnet18()
-    elif args.net == 'bmst_c3_resnet34':
-        from models.bmst_c3_resnet import bmst_c3_resnet34
-        net = bmst_c3_resnet34()
-    elif args.net == 'bmst_c3_resnet50':
-        from models.bmst_c3_resnet import bmst_c3_resnet50
-        net = bmst_c3_resnet50()
-    elif args.net == 'bmst_c3_resnet101':
-        from models.bmst_c3_resnet import bmst_c3_resnet101
-        net = bmst_c3_resnet101()
-    elif args.net == 'bmst_c3_resnet152':
-        from models.bmst_c3_resnet import bmst_c3_resnet152
-        net = bmst_c3_resnet152()
-
 
     else:
         print('the network name you have entered is not supported yet')
         sys.exit()
 
-    if args.gpu:
+    if args.gpu: #use_gpu
         net = net.cuda()
 
     return net
+class AddSaltPepperNoise(object):
 
+    def __init__(self, density=0):
+        self.density = density
 
-def get_training_dataloader(root, mean, std, batch_size=16, num_workers=2, shuffle=True):
+    def __call__(self, img):
+        img = np.array(img)  # 图片转numpy
+        h, w, c = img.shape
+        Nd = self.density
+        Sd = 1 - Nd
+        mask = np.random.choice((0, 1, 2), size=(h, w, 1), p=[Nd / 2.0, Nd / 2.0, Sd])  # 生成一个通道的mask
+        mask = np.repeat(mask, c, axis=2)  # 在通道的维度复制，生成彩色的mask
+        img[mask == 0] = 0  # 椒
+        img[mask == 1] = 255  # 盐
+        img = Image.fromarray(img.astype('uint8')).convert('RGB')  # numpy转图片
+        return img
 
+def get_training_dataloader(data_dir, mean, std, batch_size=16, num_workers=2, shuffle=True):
+
+    # transform_train = transforms.Compose([
+    #     transforms.RandomCrop(224),
+    #     transforms.RandomHorizontalFlip(),
+    #     transforms.RandomRotation(15),
+    #     transforms.ToTensor(),
+    #     transforms.Normalize(mean, std)
+    # ])
     transform_train = transforms.Compose([
-        transforms.RandomCrop([32,32], padding=4),
+        transforms.Resize([112, 112]),
         transforms.RandomHorizontalFlip(),
         transforms.RandomRotation(15),
         transforms.ToTensor(),
         transforms.Normalize(mean, std)
     ])
 
+    train_data = ImageFolder(os.path.join(data_dir, 'train'), transform=transform_train)
+    train_data_loader = DataLoader(train_data, shuffle=shuffle, num_workers=num_workers, batch_size=batch_size)
 
-    cifar10_training = torchvision.datasets.CIFAR10(root=root, train=True, download=True, transform=transform_train)
-    cifar10_training_loader = DataLoader(
-        cifar10_training, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
+    return train_data_loader
 
-    return cifar10_training_loader
 
-def get_test_dataloader(root, mean, std, batch_size=16, num_workers=2, shuffle=False):
+def get_test_dataloader(data_dir, mean, std, batch_size=16, num_workers=2, shuffle=False):
 
+
+    # transform_test = transforms.Compose([
+    #     transforms.Resize(224),
+    #     transforms.ToTensor(),
+    #     transforms.Normalize(mean, std)
+    # ])
     transform_test = transforms.Compose([
-        transforms.Resize([32, 32]),
+        transforms.Resize([112, 112]),
         transforms.ToTensor(),
         transforms.Normalize(mean, std)
     ])
 
+    test_data = ImageFolder(os.path.join(data_dir, 'test'), transform=transform_test)
+    test_data_loader = DataLoader(test_data, shuffle=shuffle, num_workers=num_workers, batch_size=batch_size)
 
-    cifar10_test = torchvision.datasets.CIFAR10(root=root, train=False, download=True, transform=transform_test)
-    cifar10_test_loader = DataLoader(
-        cifar10_test, batch_size=batch_size, shuffle=shuffle, num_workers=num_workers)
-
-    return cifar10_test_loader
+    return test_data_loader
 
 def compute_mean_std(cifar100_dataset):
 
@@ -299,34 +312,17 @@ def compute_mean_std(cifar100_dataset):
     return mean, std
 
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 def most_recent_folder(net_weights, fmt):
 
-
+    # get subfolders in net_weights
     folders = os.listdir(net_weights)
 
-
+    # filter out empty folders
     folders = [f for f in folders if len(os.listdir(os.path.join(net_weights, f)))]
     if len(folders) == 0:
         return ''
 
-
+    # sort folders by folder created time
     folders = sorted(folders, key=lambda f: datetime.datetime.strptime(f, fmt))
     return folders[-1]
 
@@ -338,7 +334,7 @@ def most_recent_weights(weights_folder):
 
     regex_str = r'([A-Za-z0-9]+)-([0-9]+)-(regular|best)'
 
-
+    # sort files by epoch
     weight_files = sorted(weight_files, key=lambda w: int(re.search(regex_str, w).groups()[1]))
 
     return weight_files[-1]

@@ -1,12 +1,8 @@
 
-
-
-
 import os
 import sys
 import argparse
 import time
-
 import numpy as np
 import torch
 import torch.nn as nn
@@ -14,7 +10,6 @@ import torch.optim as optim
 import torchvision
 import torchvision.transforms as transforms
 from torch.utils.data import DataLoader
-
 import csv
 import random
 import matplotlib.pyplot as plt
@@ -40,7 +35,7 @@ def eval_training(epoch=0, tb=True):
     test_loss = 0.0  
     correct = 0.0  
 
-    for (images, labels) in cifar10_test_loader:  
+    for (images, labels) in flower_test_loader:  
 
         if args.gpu:
             images = images.cuda()
@@ -63,24 +58,24 @@ def eval_training(epoch=0, tb=True):
 
     print('Test set: Epoch: {}, Average loss: {:.4f}, Accuracy: {:.4f}, Time consumed:{:.2f}s'.format(
         epoch,  
-        test_loss / len(cifar10_test_loader.dataset),  
-        correct.float() / len(cifar10_test_loader.dataset),  
+        test_loss / len(flower_test_loader.dataset),  
+        correct.float() / len(flower_test_loader.dataset),  
         finish - start  
     ))
-    test_loss = test_loss / len(cifar10_test_loader.dataset),  
-    test_acc = correct.float() / len(cifar10_test_loader.dataset),  
+    test_loss = test_loss / len(flower_test_loader.dataset),  
+    test_acc = correct.float() / len(flower_test_loader.dataset),  
     print()
 
     return {'test loss': test_loss[0], 'test acc': test_acc[0].item()}
 
-    
+
 
 def train(epoch,filename):
 
     start = time.time()
     net.train()
     scaler = GradScaler()  
-    for batch_index, (images, labels) in enumerate(cifar10_train_loader):
+    for batch_index, (images, labels) in enumerate(flower_training_loader):
 
 
         if args.gpu:
@@ -93,7 +88,7 @@ def train(epoch,filename):
                 if args.merge > 1:
                     lam = np.random.beta(1, 1)
                     lam = torch.tensor(lam).cuda()
-                    labels = nn.functional.one_hot(labels, 100)
+                    labels = nn.functional.one_hot(labels, 102)
                     labels = mixt(labels, lam, args.merge)
                     outputs = net(images,lam,args.merge)
                     loss = loss_function(outputs, labels)
@@ -106,9 +101,9 @@ def train(epoch,filename):
         else:
             if args.merge > 1:
                 lam = np.random.beta(1, 1)
-                lam = torch.tensor(lam)
-                
-                labels = nn.functional.one_hot(labels, 100)
+                if args.gpu:
+                    lam = torch.tensor(lam).cuda()
+                labels = nn.functional.one_hot(labels, 102)
                 labels = mixt(labels, lam, args.merge)
                 outputs = net(images, lam, args.merge)
                 loss = loss_function(outputs, labels)
@@ -125,7 +120,7 @@ def train(epoch,filename):
             optimizer.param_groups[0]['lr'],
             epoch=epoch,
             trained_samples=batch_index * args.b + len(images),
-            total_samples=len(cifar10_train_loader.dataset)
+            total_samples=len(flower_training_loader.dataset)
         ))
         train_loss=loss.item()
 
@@ -157,32 +152,35 @@ if __name__ == '__main__':
     
     args = parser.parse_args()
     net = get_network(args)
-    
-    cifar10_train_loader = get_training_dataloader(
-        root='./data',
-        mean=(0.4914, 0.4822, 0.4465),
-        std=(0.2023, 0.1994, 0.2010),
+    Flower_TRAIN_MEAN = (0.5070751592371323, 0.48654887331495095, 0.4409178433670343)
+    Flower_TRAIN_STD = (0.2673342858792401, 0.2564384629170883, 0.27615047132568404)
+
+    flower_training_loader = get_training_dataloader(
+        './data/flower',
+        Flower_TRAIN_MEAN,
+        Flower_TRAIN_STD,
+        num_workers=16,
         batch_size=args.b,
-        num_workers=6,
         shuffle=True
+
     )
 
-    cifar10_test_loader = get_test_dataloader(
-        root='./data',
-        mean=(0.4914, 0.4822, 0.4465),  
-        std=(0.2023, 0.1994, 0.2010),
+    flower_test_loader = get_test_dataloader(
+        './data/flower',
+        Flower_TRAIN_MEAN,
+        Flower_TRAIN_STD,
+        num_workers=16,
         batch_size=args.b,
-        num_workers=6,
-        shuffle=False
+        shuffle=True
     )
 
     timestamp = time.strftime("%Y%m%d_%H%M%S")
     if args.gpu:
-        filename = f"cifar100{args.net}_lr{args.lr}_{args.merge}to1_{timestamp}_gpu4090.csv"
+        filename = f"jz112Flower102_{args.net}_lr{args.lr}_{args.merge}to1_{timestamp}_b{args.b}_gpu3080.csv"
     else:
-        filename = f"cifar100{args.net}_lr{args.lr}_{args.merge}to1_{timestamp}_cpu.csv"
+        filename = f"jz112Flower102_{args.net}_lr{args.lr}_{args.merge}to1_{timestamp}_b{args.b}_cpu.csv"
     if args.fp16:
-        filename = f"cifar100{args.net}_lr{args.lr}_{args.merge}to1_{timestamp}fp16_gpu4090.csv"
+        filename = f"jz112Flower102_{args.net}_lr{args.lr}_{args.merge}to1_{timestamp}fp16_b{args.b}_gpu3080.csv"
 
     with open(filename, mode='w', newline='') as csvfile:
         fieldnames = ['epoch', 'train loss', 'lr', 'test loss', 'test acc', 'time']  
@@ -193,7 +191,7 @@ if __name__ == '__main__':
     loss_function = nn.CrossEntropyLoss()
     optimizer = optim.SGD(net.parameters(), lr=args.lr, momentum=0.9, weight_decay=5e-4)
     train_scheduler = optim.lr_scheduler.MultiStepLR(optimizer, milestones=settings.MILESTONES, gamma=0.2) 
-    iter_per_epoch = len(cifar10_train_loader)
+    iter_per_epoch = len(flower_training_loader)
     
 
     
